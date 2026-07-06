@@ -1,20 +1,11 @@
 import os
 import sys
 import time
+import telebot
+from telebot import types
 
-# --- نظام التثبيت التلقائي الذكي للمكتبة ---
-try:
-    import telebot
-    from telebot import types
-except ImportError:
-    print("🔄 جاري تثبيت مكتبة التليجرام تلقائياً...")
-    os.system(f"{sys.executable} -m pip install pyTelegramBotAPI")
-    import telebot
-    from telebot import types
-
-# الإعدادات الخاصة بك
-TOKEN = "8956128893:AAGtiowYmtDDCi0HWwKBZW9PTaAjZ3MzeTk"
-ADMIN_ID = 333416014
+TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+ADMIN_ID = int(os.environ.get("ADMIN_ID", "333416014"))
 CHANNEL_USERNAME = "@vip_bbg"
 SUPPORT_USERNAME = "@czccvz"
 ASIA_NUMBER = "07756320299"
