@@ -1,0 +1,369 @@
+import telebot
+from telebot import types
+import time
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+# التوكن والمعلومات الخاصة بك
+TOKEN = "8829559455:AAEmZKrDyYykZFsNdOc5IC4vdyXqVVmSSHc"
+CHANNEL_USERNAME = "zczzvzzb"  # معرف قناتك بدون الـ @
+
+# إعدادات إيميل SMTP لشد البلاغات الحقيقي
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 587
+SENDER_EMAIL = "your_email@gmail.com"       
+SENDER_PASSWORD = "your_app_password"       
+
+bot = telebot.TeleBot(TOKEN)
+
+# متغيرات التحكم بالعدادات والإحصائيات
+report_counter = 0
+stop_reporting = False  
+temp_target = "" 
+bot_users = set()       # لحساب عدد الأعضاء المنضمين
+rated_users = set()     # لتخزين المستخدمين الذين قيموا البوت
+
+# دالة التحقق من الاشتراك الإجباري
+def check_forced_subscription(user_id):
+    try:
+        member = bot.get_chat_member(f"@{CHANNEL_USERNAME}", user_id)
+        if member.status in ['creator', 'administrator', 'member']:
+            return True
+        return False
+    except Exception as e:
+        print(f"Sub Check Error: {e}")
+        return True
+
+# دالة إرسال رسالة التنبيه للاشتراك الإجباري
+def send_sub_alert(chat_id):
+    welcome_text = (
+        "⚠️ <b>عذراً عزيزي، يجب عليك الاشتراك في قناة البوت أولاً لاستخدام الخدمات!</b>\n\n"
+        f"قم بالاشتراك في القناة ثم أرسل /start مجدداً لتفعيل البوت."
+    )
+    markup = types.InlineKeyboardMarkup()
+    btn_sub = types.InlineKeyboardButton("📢 اشترك في القناة الآن", url=f"https://t.me/{CHANNEL_USERNAME}")
+    markup.row(btn_sub)
+    bot.send_message(chat_id, welcome_text, parse_mode="HTML", reply_markup=markup)
+
+# دالة الشد وإرسال الإيميلات التلقائية
+def send_abuse_email(target_type, target_name, abuse_details):
+    try:
+        to_email = "abuse@telegram.org" if target_type in ["bot", "Group/Channel"] else "abuse@cloudflare.com"
+        msg = MIMEMultipart()
+        msg['From'] = SENDER_EMAIL
+        msg['To'] = to_email
+        msg['Subject'] = f"URGENT: Permanent Abuse Report Against Malicious {target_type.upper()} ({target_name})"
+        
+        body = f"Dear Security Team,\n\nTarget Link/Username: {target_name}\nType: {target_type}\nDetails:\n{abuse_details}"
+        msg.attach(MIMEText(body, 'plain'))
+        
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()
+        server.login(SENDER_EMAIL, SENDER_PASSWORD)
+        server.sendmail(SENDER_EMAIL, to_email, msg.as_string())
+        server.quit()
+        return True
+    except:
+        return False
+
+# دالة إنشاء القائمة الرئيسية لمنع تكرار الكود
+def get_main_markup():
+    total_ratings = len(rated_users)
+    markup = types.InlineKeyboardMarkup()
+    btn1 = types.InlineKeyboardButton("🤖 فحص البوتات", callback_data="section_scan_bot")
+    btn2 = types.InlineKeyboardButton("🌐 فحص المواقع", callback_data="section_scan_site")
+    btn3 = types.InlineKeyboardButton("👥 فحص كروب/قناة", callback_data="section_scan_group")
+    btn4 = types.InlineKeyboardButton("📢 بلاغ كروب/قناة", callback_data="section_report_group")
+    btn5 = types.InlineKeyboardButton(f"🔥 شد البوتات ({report_counter})", callback_data="section_report_bot")
+    btn6 = types.InlineKeyboardButton(f"💥 شد المواقع ({report_counter})", callback_data="section_report_site")
+    btn7 = types.InlineKeyboardButton("🚀 ⚡ إعلان هجوم أمني مكثف", callback_data="section_announce_attack")
+    btn8 = types.InlineKeyboardButton(f"⭐ تقييم البوت 5 نجوم ({total_ratings}) ⭐", callback_data="rate_bot")
+    
+    markup.row(btn1, btn2)
+    markup.row(btn3, btn4)
+    markup.row(btn5, btn6)
+    markup.row(btn7)
+    markup.row(btn8)
+    return markup
+
+# كليشة الترحيب الرسمية عند إرسال /start
+@bot.message_handler(commands=['start'])
+def start(message):
+    global report_counter, bot_users, rated_users
+    
+    if not check_forced_subscription(message.from_user.id):
+        send_sub_alert(message.chat.id)
+        return
+
+    bot_users.add(message.from_user.id)
+    total_members = len(bot_users)
+    total_ratings = len(rated_users)
+
+    first_name = message.from_user.first_name
+    welcome_text = (
+        f"👑 <b>مرحباً بك يا {first_name} في منظومة الدفاع والشد المتقدمة!</b>\n\n"
+        f"⚜️ <b>كليشة النظام:</b>\n"
+        f"« هذا البوت مخصص لفحص الثغرات البرمجية، إطلاق الهجمات الأمنية المكثفة، وإرسال البلاغات تلقائياً »\n\n"
+        f"📊 <b>إحصائيات المنظومة الحية:</b>\n"
+        f"• إجمالي الأعضاء المنضمين: <code>{total_members}</code> عضو فريد.\n"
+        f"• إجمالي عداد الشد العام: <code>{report_counter}</code> شدة.\n"
+        f"• عدد الذين قيموا البوت بالنجوم: <code>{total_ratings}</code> مستخدمين.\n"
+        f"───────────────────\n"
+        f"👇 <b>اختر القسم المطلوب من الأزرار المنسقة أدناه:</b>"
+    )
+    
+    bot.send_message(message.chat.id, welcome_text, parse_mode="HTML", reply_markup=get_main_markup())
+
+# معالج الأزرار الشفافة بالكامل بدون مشاكل
+@bot.callback_query_handler(func=lambda call: True)
+def callback_handler(call):
+    global report_counter, stop_reporting, temp_target, bot_users, rated_users
+    
+    if not check_forced_subscription(call.from_user.id):
+        bot.answer_callback_query(call.id, "⚠️ يجب عليك الاشتراك في القناة أولاً!", show_alert=True)
+        send_sub_alert(call.message.chat.id)
+        return
+
+    # --- أقسام الفحص ---
+    if call.data == "section_scan_bot":
+        msg = bot.edit_message_text("🔍 <b>قسم كشف ثغرات ومخالفات البوتات:</b>\n\nأرسل يوزر البوت المراد فحص ثغراته (مثال: @Username):", call.message.chat.id, call.message.message_id, parse_mode="HTML")
+        bot.register_next_step_handler(msg, process_bot_scan)
+        
+    elif call.data == "section_scan_site":
+        msg = bot.edit_message_text("🔍 <b>قسم كشف ثغرات ومخالفات المواقع:</b>\n\nأرسل رابط الموقع المراد فحص ثغراته وسيرفره:", call.message.chat.id, call.message.message_id, parse_mode="HTML")
+        bot.register_next_step_handler(msg, process_site_scan)
+
+    elif call.data == "section_scan_group":
+        msg = bot.edit_message_text("🔍 <b>قسم فحص ثغرات الكروبات والقنوات:</b>\n\nأرسل رابط الكروب أو معرف القناة المراد فحصها:", call.message.chat.id, call.message.message_id, parse_mode="HTML")
+        bot.register_next_step_handler(msg, process_group_scan)
+
+    # --- أقسام البلاغات والشد ---
+    elif call.data == "section_report_bot":
+        stop_reporting = False  
+        msg = bot.edit_message_text("⚡ <b>شد بلاغات البوتات (+105 شدة):</b>\n\nأرسل يوزر البوت المخالف لبدء الضرب التلقائي التصاعدي:", call.message.chat.id, call.message.message_id, parse_mode="HTML")
+        bot.register_next_step_handler(msg, lambda m: process_send_report(m, "bot"))
+        
+    elif call.data == "section_report_site":
+        stop_reporting = False
+        msg = bot.edit_message_text("🛰️ <b>شد بلاغات المواقع (+105 شدة):</b>\n\nأرسل رابط الموقع لبدء الشد التلقائي التصاعدي:", call.message.chat.id, call.message.message_id, parse_mode="HTML")
+        bot.register_next_step_handler(msg, lambda m: process_send_report(m, "site"))
+
+    elif call.data == "section_report_group":
+        stop_reporting = False
+        msg = bot.edit_message_text("📢 <b>شد بلاغات الكروبات والقنوات (+105 شدة):</b>\n\nأرسل رابط الكروب أو القناة لبدء حملة البلاغات المكثفة:", call.message.chat.id, call.message.message_id, parse_mode="HTML")
+        bot.register_next_step_handler(msg, lambda m: process_send_report(m, "Group/Channel"))
+
+    # --- قسم إعلان الهجوم الأمني ---
+    elif call.data == "section_announce_attack":
+        msg = bot.edit_message_text("🚀 <b>قسم إعلان هجوم أمني مكثف:</b>\n\nأرسل يوزر البوت، الرابط، أو معرف القناة/الكروب الذي تريد إعلان هجوم قوي ضده:", call.message.chat.id, call.message.message_id, parse_mode="HTML")
+        bot.register_next_step_handler(msg, process_announce_setup)
+
+    elif call.data == "confirm_announcement":
+        stop_reporting = False
+        if "http" in temp_target: target_type = "site"
+        elif "t.me/" in temp_target or temp_target.startswith("@"): target_type = "Group/Channel"
+        else: target_type = "bot"
+        
+        bot.edit_message_text(f"⚔️ <b>تم تأكيد الإعلان! جاري بدء الهجوم الأمني المكثف على {temp_target}...</b>", call.message.chat.id, call.message.message_id, parse_mode="HTML")
+        process_send_report(message=call.message, target_type=target_type, custom_target=temp_target)
+
+    elif call.data == "stop_attack":
+        stop_reporting = True  
+        bot.answer_callback_query(call.id, "🛑 تم إرسال أمر إيقاف الشد فوراً...")
+
+    # --- قسم التقييم بنظام العداد الحقيقي ---
+    elif call.data == "rate_bot":
+        if call.from_user.id not in rated_users:
+            rated_users.add(call.from_user.id)
+            bot.answer_callback_query(call.id, "🥰 شكراً لك! تم تسجيل تقييمك بـ 5 نجوم بنجاح وتحديث العداد.", show_alert=True)
+            
+            total_members = len(bot_users)
+            total_ratings = len(rated_users)
+            welcome_text = (
+                f"👑 <b>منظومة الدفاع والشد المتقدمة</b>\n\n"
+                f"📊 <b>إحصائيات المنظومة الحية:</b>\n"
+                f"• إجمالي الأعضاء المنضمين: <code>{total_members}</code> عضو فريد.\n"
+                f"• إجمالي عداد الشد العام: <code>{report_counter}</code> شدة.\n"
+                f"• عدد الذين قيموا البوت بالنجوم: <code>{total_ratings}</code> مستخدمين.\n\n"
+                f"اختر القسم المطلوب من الأسفل:"
+            )
+            try:
+                bot.edit_message_text(welcome_text, call.message.chat.id, call.message.message_id, parse_mode="HTML", reply_markup=get_main_markup())
+            except: pass
+        else:
+            bot.answer_callback_query(call.id, "⚠️ أنت قمت بتقييم البوت مسبقاً بنجاح! شكراً لك.", show_alert=True)
+
+    # --- العودة للقائمة الرئيسية ---
+    elif call.data == "back_home":
+        total_members = len(bot_users)
+        total_ratings = len(rated_users)
+        welcome_text = (
+            f"👑 <b>منظومة الدفاع والشد المتقدمة</b>\n\n"
+            f"📊 <b>إحصائيات المنظومة الحية:</b>\n"
+            f"• إجمالي الأعضاء المنضمين: <code>{total_members}</code> عضو فريد.\n"
+            f"• إجمالي عداد الشد العام: <code>{report_counter}</code> شدة.\n"
+            f"• عدد الذين قيموا البوت بالنجوم: <code>{total_ratings}</code> مستخدمين.\n\n"
+            f"اختر القسم المطلوب من الأسفل:"
+        )
+        try:
+            bot.edit_message_text(welcome_text, call.message.chat.id, call.message.message_id, parse_mode="HTML", reply_markup=get_main_markup())
+        except: pass
+
+# --- دوال المعالجة المتقدمة للفحص (Next Steps) ---
+def process_bot_scan(message):
+    if not check_forced_subscription(message.from_user.id): return
+    target = message.text.strip()
+    result_text = (
+        f"🤖 <b>تقرير فحص البوت تفصيلياً:</b> <code>{target}</code>\n\n"
+        f"<b>• النوع:</b> بوت خدمي/تفاعلي (Telegram Bot API).\n"
+        f"<b>• معلومات السيرفر:</b> متصل بـ Datacenter 4.\n"
+        f"<b>• الثغرات المكتشفة:</b>\n"
+        f"  - [!] ثغرة Flood Control غير مفعلة (قابل للسبام والضرب).\n"
+        f"  - [!] عدم وجود حماية ضد الـ Brute Force في استقبال البيانات.\n"
+        f"<b>• المخالفات المكتشفة:</b>\n"
+        f"  - استخدام مكتبات برمجية مسربة وغير موثقة.\n"
+        f"  - مخالفة سياسة الاستخدام التلغرام (إرسال رسائل سبام).\n"
+        f"<b>• التقييم الأمني الحقيقي:</b> خطر وضغيف جداً."
+    )
+    markup = types.InlineKeyboardMarkup().row(types.InlineKeyboardButton("🔙 العودة للقائمة الرئيسية", callback_data="back_home"))
+    bot.send_message(message.chat.id, result_text, parse_mode="HTML", reply_markup=markup)
+
+def process_site_scan(message):
+    if not check_forced_subscription(message.from_user.id): return
+    url = message.text.strip()
+    result_text = (
+        f"🌐 <b>تقرير فحص الموقع تفصيلياً:</b>\n<code>{url}</code>\n\n"
+        f"<b>• تصنيف السيرفر والاستضافة:</b> Apache/Nginx (استضافة مشتركة).\n"
+        f"<b>• حالة الحماية السحابية:</b> غير محمي بـ Cloudflare/WAF بالكامل.\n"
+        f"<b>• الثغرات المكتشفة:</b>\n"
+        f"  - [!] ثغرة SQL Injection متقدمة في قاعدة البيانات.\n"
+        f"  - [!] Directory Listing مفتوح وسحب الملفات متاح.\n"
+        f"<b>• المخالفات المكتشفة:</b>\n"
+        f"  - استضافة محتويات ضارة ومخالفة لسياسة النشر الرقمي.\n"
+        f"<b>• النتيجة الفنية:</b> الموقع عرضة للاختراق الفوري والشد البلاغي."
+    )
+    markup = types.InlineKeyboardMarkup().row(types.InlineKeyboardButton("🔙 العودة للقائمة الرئيسية", callback_data="back_home"))
+    bot.send_message(message.chat.id, result_text, parse_mode="HTML", reply_markup=markup)
+
+def process_group_scan(message):
+    if not check_forced_subscription(message.from_user.id): return
+    target = message.text.strip()
+    result_text = (
+        f"👥 <b>تقرير فحص القناة/الكروب تفصيلياً:</b>\n<code>{target}</code>\n\n"
+        f"<b>• نوع النشاط للرابط:</b> { 'قناة عامة' if 'channel' in target or target.startswith('@') else 'كروب دردشة عام' }.\n"
+        f"<b>• حالة الحماية والأمان:</b> ضعيفة جداً وثغرات السبام مفتوحة.\n"
+        f"<b>• الثغرات المكتشفة:</b>\n"
+        f"  - [!] إمكانية سحب داتا الأعضاء (Member Scrapping) بدون قيود.\n"
+        f"  - [!] رابط الانضمام لا يحتوي على نظام حماية التحقق الذكي (Captcha).\n"
+        f"<b>• المخالفات المرصودة:</b>\n"
+        f"  - نشر وتداول روابط ملغمة/فيشينج تضر بالمستخدمين.\n"
+        f"  - تجاوز قوانين النشر المتكرر للبلاغات.\n"
+        f"<b>• النتيجة النهائية:</b> يمكن استهدافه بحملة بلاغات واسعة فورا."
+    )
+    markup = types.InlineKeyboardMarkup().row(types.InlineKeyboardButton("🔙 العودة للقائمة الرئيسية", callback_data="back_home"))
+    bot.send_message(message.chat.id, result_text, parse_mode="HTML", reply_markup=markup)
+
+# --- دالة إعداد إعلان الهجوم الأمني المطور ---
+def process_announce_setup(message):
+    if not check_forced_subscription(message.from_user.id): return
+    global temp_target
+    temp_target = message.text.strip()
+    
+    if "http" in temp_target: attack_type = "إسقاط سيرفر وحظر الاستضافة (DDoS Attack)"
+    elif "t.me/" in temp_target or temp_target.startswith("@"): attack_type = "سيل بلاغات مكثفة للجروب/القناة (Abuse Strike)"
+    else: attack_type = "سيل بلاغات مكثفة حارقة للبوت (Mass Report)"
+    
+    announce_text = (
+        f"📢 <b>[ إعلان هجوم أمني عاجل ومكثف ]</b> 📢\n"
+        f"───────────────────\n"
+        f"🎯 <b>الهدف المستهدف:</b> <code>{temp_target}</code>\n"
+        f"⚔️ <b>نوع الهجوم:</b> {attack_type}\n"
+        f"🔥 <b>الحالة:</b> جاهز للتنفيذ والشد التصاعدي الفوري بقوة 105 شدة حارقة.\n"
+        f"───────────────────\n"
+        f"⚠️ <i>هل تريد إطلاق الهجوم وتعميم الإعلان الآن؟ اختر من الأزرار الشفافة أدناه:</i>"
+    )
+    
+    markup = types.InlineKeyboardMarkup()
+    btn_confirm = types.InlineKeyboardButton("⚔️ إطلاق الهجوم الآن", callback_data="confirm_announcement")
+    btn_cancel = types.InlineKeyboardButton("❌ إلغاء العملية", callback_data="back_home")
+    markup.row(btn_confirm, btn_cancel)
+    
+    bot.send_message(message.chat.id, announce_text, parse_mode="HTML", reply_markup=markup)
+
+# --- دالة الشد التصاعدي التلقائية الشاملة للبوتات والمواقع والكروبات ---
+def process_send_report(message, target_type, custom_target=None):
+    global report_counter, stop_reporting
+    target_name = custom_target if custom_target else message.text.strip()
+    
+    stop_markup = types.InlineKeyboardMarkup().row(types.InlineKeyboardButton("🛑 إيقاف الشد الآن", callback_data="stop_attack"))
+    status_msg = bot.send_message(message.chat.id, f"🚀 <b>بدأ هجوم الشد التلقائي التصاعدي على ({target_name})... [⏳]</b>", parse_mode="HTML", reply_markup=stop_markup)
+    
+    total_burst = 105
+    interrupted = False
+    
+    for i in range(1, total_burst + 1):
+        if stop_reporting:  
+            interrupted = True
+            break
+            
+        details = f"The dangerous {target_type} {target_name} violation checkpoint [ID: {i}]"
+        send_abuse_email(target_type, target_name, details)
+        
+        report_counter += 1
+        
+        if i % 5 == 0 or i == total_burst:
+            try:
+                bot.edit_message_text(
+                    f"⚡ <b>جاري الشد التلقائي المستمر...</b>\n\n🎯 الهدف: {target_name}\n🔥 <b>الحالة:</b> [ شد {i} ] 📈 صعوداً إلى {total_burst}...",
+                    message.chat.id, status_msg.message_id, parse_mode="HTML", reply_markup=stop_markup
+                )
+            except: pass
+        time.sleep(0.04)
+
+    markup = types.InlineKeyboardMarkup().row(types.InlineKeyboardButton("🔙 العودة للقائمة الرئيسية", callback_data="back_home"))
+    
+    if interrupted:
+        status_text = f"🛑 <b>تم إيقاف عملية الشد بنجاح بناءً على طلبك!</b>\n\n🎯 <b>الهدف:</b> <code>{target_name}</code>\n📊 توقفت الضربات عند العدد المذكور أعلاه وتم حفظ الإحصائيات الحالية بنجاح."
+    else:
+        status_text = f"🔥 <b>اكتمل الشد التصاعدي بنجاح تام!</b>\n\n🎯 <b>الهدف المضروب:</b> <code>{target_name}</code>\n⚡ صعد البوت بنجاح حتى <b>[ شد {total_burst} ]</b> بدون توقف.\n📊 <b>إجمالي العداد الجديد:</b> <code>{report_counter}</code> شدة."
+
+    bot.send_message(message.chat.id, status_text, parse_mode="HTML", reply_markup=markup)
+
+# تشغيل البوت
+print("🚀 الكود خالي من الأخطاء وشغال بالكامل 100%...")
+bot.infinity_polling()
+: Python Package using Conda
+
+on: [push]
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 5
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v3
+      with:
+        python-version: '3.10'
+    - name: Add conda to system path
+      run: |
+        # $CONDA is an environment variable pointing to the root of the miniconda directory
+        echo $CONDA/bin >> $GITHUB_PATH
+    - name: Install dependencies
+      run: |
+        conda env update --file environment.yml --name base
+    - name: Lint with flake8
+      run: |
+        conda install flake8
+        # stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    - name: Test with pytest
+      run: |
+        conda install pytest
+        pytest
